@@ -6,9 +6,7 @@ from sklearn.model_selection import train_test_split, KFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix,precision_recall_curve,auc,roc_auc_score,roc_curve,recall_score,classification_report
 import itertools
-from imblearn.under_sampling import OneSidedSelection, CondensedNearestNeighbour, RandomUnderSampler, NearMiss, InstanceHardnessThreshold
-from sklearn.datasets import make_classification
-import datetime
+from sklearn.tree import DecisionTreeClassifier
 
 data = pd.read_csv("creditcard.csv")
 
@@ -19,65 +17,48 @@ data = pd.read_csv("creditcard.csv")
 # plt.ylabel("Frequency")
 # plt.show()
 
+# fraud_data = data[data.Class == 1]
+# print(sum(fraud_data['Amount'].values.ravel()) / len(fraud_data))
+# normal_data = data[data.Class == 0]
+# print(sum(normal_data['Amount'].values.ravel()) / len(normal_data))
+# print(len(normal_data))
+# exit()
+
 data['normAmount'] = StandardScaler().fit_transform(data['Amount'].values.reshape(-1, 1))
 data = data.drop(['Time','Amount'],axis=1)
 # print(data.head())
 
+
 X = data.iloc[:, data.columns != 'Class']
-Y = data.loc[:, data.columns == 'Class']
-
-X2, y2 = make_classification(n_classes=2, class_sep=2, weights=[0.95, 0.05],
-                           n_informative=3, n_redundant=1, flip_y=0,
-                           n_features=20, n_clusters_per_class=1,
-                           n_samples=200000, random_state=10)
-
-print(y2)
-frame = pd.DataFrame(data=X2[:,:], columns=X2[0,:])
-frame = frame.assign(Class=pd.Series(y2).values)
-# print(frame)
-
-# data = frame
-X = data.iloc[:, data.columns != 'Class']
-Y = data.loc[:, data.columns == 'Class']
+Y = data.iloc[:, data.columns == 'Class']
 
 # Number of data points in the minority class
 number_records_fraud = len(data[data.Class == 1])
 fraud_indices = np.array(data[data.Class == 1].index)
 
+total = len(data)
+print('total: ' + str(total))
+print('fraud: ' + str(number_records_fraud))
+step = round((total-number_records_fraud)/10)*1
+print(step)
+
+
 # Picking the indices of the normal classes
 normal_indices = data[data.Class == 0].index
 
 # Out of the indices we picked, randomly select "x" number (number_records_fraud)
-random_normal_indices = np.random.choice(normal_indices, number_records_fraud, replace = False)
+random_normal_indices = np.random.choice(normal_indices, step, replace=False)
 random_normal_indices = np.array(random_normal_indices)
 
 
-print("go")
-print(datetime.datetime.now().time())
-oss = OneSidedSelection(return_indices=True)
-cnn = CondensedNearestNeighbour(return_indices=True)
-rus = RandomUnderSampler(return_indices=True)
-nm = NearMiss(version=3, return_indices=True)
-X_resampled, y_resampled, idx_resampled = oss.fit_sample(X, Y.values.ravel())
-# X_resampled, y_resampled, idx_resampled = cnn.fit_sample(X, Y.values.ravel())
-# X_resampled, y_resampled, idx_resampled = rus.fit_sample(X, Y.values.ravel())
-# X_resampled, y_resampled, idx_resampled = nm.fit_sample(X, Y.values.ravel())
-print("stop")
-print(datetime.datetime.now().time())
-
-# print(X_resampled)
-# print(y_resampled)
-# print(idx_resampled)
-idx_resampled = np.array(idx_resampled)
-# print(len(idx_resampled))
-
-
-
 # Appending the 2 indices
-under_sample_indices = np.concatenate([fraud_indices,idx_resampled])
+under_sample_indices = np.concatenate([fraud_indices,random_normal_indices])
+# np.random.shuffle(under_sample_indices)
+under_sample_indices = np.sort(under_sample_indices)
 
 # Under sample dataset
 under_sample_data = data.iloc[under_sample_indices,:]
+# print(under_sample_data)
 
 X_undersample = under_sample_data.iloc[:, under_sample_data.columns != 'Class']
 Y_undersample = under_sample_data.iloc[:, under_sample_data.columns == 'Class']
@@ -149,8 +130,8 @@ def printing_Kfold_scores(x_train_data, y_train_data):
 
 def plot_confusion_matrix(cm, classes,
                           normalize=False,
-                          title='Confusion matrix',
-                          cmap=plt.cm.Blues):
+                          title='Матрица неточностей',
+                          cmap=plt.cm.Greens):
     """
     This function prints and plots the confusion matrix.
     Normalization can be applied by setting `normalize=True`.
@@ -180,61 +161,29 @@ def plot_confusion_matrix(cm, classes,
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
 
-best_c = printing_Kfold_scores(X_train_undersample,Y_train_undersample)
-
-# Use this C_parameter to build the final model with the whole training dataset and predict the classes in the test
-# dataset
-lr = LogisticRegression(C=best_c, penalty='l1')
-lr.fit(X_train_undersample,Y_train_undersample.values.ravel())
-y_pred_undersample = lr.predict(X_test_undersample.values)
-
-# Compute confusion matrix
-cnf_matrix = confusion_matrix(Y_test_undersample, y_pred_undersample)
-np.set_printoptions(precision=2)
-
-print("Recall metric in the testing dataset: ", cnf_matrix[1,1]/(cnf_matrix[1,0]+cnf_matrix[1,1]))
-
-# Plot non-normalized confusion matrix
-class_names = [0,1]
-plt.figure()
-plot_confusion_matrix(cnf_matrix
-                      , classes=class_names
-                      , title='Confusion matrix')
-plt.show()
 
 # best_c = printing_Kfold_scores(X_train,Y_train)
-# Use this C_parameter to build the final model with the whole training dataset and predict the classes in the test
-# dataset
-lr = LogisticRegression(C = 10.0, penalty = 'l1')
-lr.fit(X_train_undersample,Y_train_undersample.values.ravel())
-y_pred = lr.predict(X_test.values)
+# lr = LogisticRegression(C = best_c, penalty = 'l1')
+# lr.fit(X_train,Y_train.values.ravel())
+# y_pred = lr.predict(X_test.values)
+
+print(len(X_train))
+print(len(X_test) - Y_test)
+
+dt = DecisionTreeClassifier()
+dt.fit(X_train, Y_train.values.ravel())
+y_pred = dt.predict(X_test.values)
+
+# lr = LogisticRegression(C=1.0, penalty='l1')
+# lr.fit(X_train_undersample,Y_train_undersample.values.ravel())
+# y_pred = lr.predict(X_test.values)
 
 # Compute confusion matrix
 cnf_matrix = confusion_matrix(Y_test,y_pred)
 np.set_printoptions(precision=2)
 
 print("Recall metric in the testing dataset: ", cnf_matrix[1,1]/(cnf_matrix[1,0]+cnf_matrix[1,1]))
-
-# Plot non-normalized confusion matrix
-class_names = [0,1]
-plt.figure()
-plot_confusion_matrix(cnf_matrix
-                      , classes=class_names
-                      , title='Confusion matrix')
-plt.show()
-
-
-
-
-lr = LogisticRegression(C = best_c, penalty = 'l1')
-lr.fit(X_train,Y_train.values.ravel())
-y_pred = lr.predict(X_test.values)
-
-# Compute confusion matrix
-cnf_matrix = confusion_matrix(Y_test,y_pred)
-np.set_printoptions(precision=2)
-
-print("Recall metric in the testing dataset: ", cnf_matrix[1,1]/(cnf_matrix[1,0]+cnf_matrix[1,1]))
+print("Precision metric in the testing dataset: ", cnf_matrix[1,1]/(cnf_matrix[0,1]+cnf_matrix[1,1]))
 
 # Plot non-normalized confusion matrix
 class_names = [0,1]
